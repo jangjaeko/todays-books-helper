@@ -41,6 +41,20 @@
     margin-bottom: 10px;
     line-height: 1.4;
   }
+  /* 조회 중 스피너 */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #status.loading::before {
+    content: "";
+    display: inline-block;
+    width: 11px;
+    height: 11px;
+    margin-right: 6px;
+    border: 2px solid #c9ced6;
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: -1px;
+  }
   /* 무게 보완 성공 시(교보문고/알라딘): 눈에 확 띄게 */
   #status.weight-ok {
     color: #b23a00;

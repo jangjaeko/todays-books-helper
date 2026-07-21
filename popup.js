@@ -487,7 +487,7 @@ function buildCase3(d, cad) {
 
 // ---- 실행 ----
 async function run() {
-  statusEl.classList.remove("weight-ok", "weight-fail");
+  statusEl.classList.remove("weight-ok", "weight-fail", "loading");
   statusEl.textContent = "불러오는 중…";
   fieldsEl.innerHTML = "";
   currentData = null;
@@ -514,6 +514,7 @@ async function run() {
       let w = null;
       let src = null;
 
+      statusEl.classList.add("loading");
       statusEl.textContent = "무게 정보가 없어 교보문고에서 조회 중…";
       try {
         w = await fetchKyoboWeight(result.isbn);
@@ -532,6 +533,7 @@ async function run() {
         }
       }
 
+      statusEl.classList.remove("loading");
       if (w) {
         currentData.weight = w;
         currentData.weightSource = src;
