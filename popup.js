@@ -312,6 +312,63 @@ async function fetchKyoboWeight(isbn) {
   return null;
 }
 
+// ================================================================
+// 알라딘 무게 보완 (교보문고에도 무게가 없을 때 3차 폴백)
+// 교보와 달리 알라딘 상세페이지는 서버 렌더링이라 HTML에 무게가 그대로 있음.
+//   1) 알라딘 검색 HTML에서 첫 상품(ItemId) 후보를 뽑고
+//   2) 상세페이지 HTML에서 무게(예: "145*210mm / 478g")를 파싱.
+// 안전장치: 상세페이지 HTML에 조회한 ISBN 문자열이 들어있을 때만 채택.
+// ================================================================
+function parseAladinWeight(html) {
+  const text = html.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ");
+  // "…mm / 478g" 형태 우선 (치수 다음에 오는 무게)
+  let m = text.match(/mm\s*[^\d]{0,4}(\d{2,5})\s*g\b/i);
+  if (m) return parseFloat(m[1]);
+  // 폴백: "…쪽 … 478g"
+  m = text.match(/쪽[\s\S]{0,30}?(\d{2,5})\s*g\b/);
+  if (m) return parseFloat(m[1]);
+  return 0;
+}
+
+async function fetchAladinWeight(isbn) {
+  const target = normIsbn(isbn);
+  if (target.length < 10) return null;
+
+  // 1) 알라딘 검색 → 후보 ItemId 목록 (등장 순서, 중복 제거)
+  const searchUrl =
+    "https://www.aladin.co.kr/search/wsearchresult.aspx?SearchTarget=All&SearchWord=" +
+    encodeURIComponent(isbn);
+  const res = await fetch(searchUrl, { credentials: "omit" });
+  if (!res.ok) throw new Error("알라딘 검색 실패(" + res.status + ")");
+  const html = await res.text();
+
+  const ids = [];
+  const re = /wproduct\.aspx\?ItemId=(\d+)/gi;
+  let m;
+  while ((m = re.exec(html)) && ids.length < 8) {
+    if (!ids.includes(m[1])) ids.push(m[1]);
+  }
+  if (!ids.length) return null;
+
+  // 2) 후보 상세페이지를 순회 — ISBN이 실제로 담긴 페이지의 무게만 채택 (앞쪽 3개)
+  for (const id of ids.slice(0, 3)) {
+    try {
+      const r2 = await fetch(
+        "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=" + id,
+        { credentials: "omit" }
+      );
+      if (!r2.ok) continue;
+      const phtml = await r2.text();
+      if (!phtml.includes(target)) continue; // 엉뚱한 추천 상품 방지
+      const w = parseAladinWeight(phtml);
+      if (w > 0) return String(Math.round(w));
+    } catch (_) {
+      /* 다음 후보 계속 */
+    }
+  }
+  return null;
+}
+
 function render(data) {
   currentData = data;
   fieldsEl.innerHTML = "";
@@ -387,7 +444,7 @@ function buildCase3(d, cad) {
 
 // ---- 실행 ----
 async function run() {
-  statusEl.classList.remove("kyobo-ok");
+  statusEl.classList.remove("weight-ok");
   statusEl.textContent = "불러오는 중…";
   fieldsEl.innerHTML = "";
   currentData = null;
@@ -409,24 +466,39 @@ async function run() {
     statusEl.textContent = "추출 완료. 원하는 양식 버튼을 눌러 복사하세요.";
     render(result);
 
-    // 무게가 없으면 교보문고에서 보완 (ISBN 필요)
+    // 무게가 없으면 다른 서점에서 보완 (ISBN 필요): 교보문고 → 알라딘 순
     if (!result.weight && result.isbn) {
+      let w = null;
+      let src = null;
+
       statusEl.textContent = "무게 정보가 없어 교보문고에서 조회 중…";
       try {
-        const w = await fetchKyoboWeight(result.isbn);
-        if (w) {
-          currentData.weight = w;
-          currentData.weightSource = "교보문고";
-          render(currentData);
-          statusEl.classList.add("kyobo-ok");
-          statusEl.textContent =
-            "✅ 무게 " + w + "g 를 교보문고에서 보완했습니다. 양식 버튼을 눌러 복사하세요.";
-        } else {
-          statusEl.textContent =
-            "교보문고에서도 무게를 찾지 못했습니다. (무게 없이 계산됨)";
+        w = await fetchKyoboWeight(result.isbn);
+        if (w) src = "교보문고";
+      } catch (_) {
+        /* 다음 폴백으로 */
+      }
+
+      if (!w) {
+        statusEl.textContent = "교보문고에 무게가 없어 알라딘에서 조회 중…";
+        try {
+          w = await fetchAladinWeight(result.isbn);
+          if (w) src = "알라딘";
+        } catch (_) {
+          /* 실패 시 아래에서 안내 */
         }
-      } catch (e2) {
-        statusEl.textContent = "교보문고 조회 실패: " + e2.message + " (무게 없이 계산됨)";
+      }
+
+      if (w) {
+        currentData.weight = w;
+        currentData.weightSource = src;
+        render(currentData);
+        statusEl.classList.add("weight-ok");
+        statusEl.textContent =
+          "✅ 무게 " + w + "g 를 " + src + "에서 보완했습니다. 양식 버튼을 눌러 복사하세요.";
+      } else {
+        statusEl.textContent =
+          "교보문고·알라딘에서도 무게를 찾지 못했습니다. (무게 없이 계산됨)";
       }
     }
   } catch (e) {

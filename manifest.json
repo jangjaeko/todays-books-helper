@@ -7,7 +7,8 @@
   "host_permissions": [
     "https://www.yes24.com/*",
     "https://search.kyobobook.co.kr/*",
-    "https://product.kyobobook.co.kr/*"
+    "https://product.kyobobook.co.kr/*",
+    "https://www.aladin.co.kr/*"
   ],
   "action": {
     "default_popup": "popup.html",

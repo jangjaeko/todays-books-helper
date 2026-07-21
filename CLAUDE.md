@@ -61,9 +61,17 @@ yes24-extractor/
 
 표(`table tr`)의 `th`/`td` 라벨 매칭은 발행일·무게·ISBN·정가에 사용. 못 찾으면 `document.body.innerText` 정규식 폴백.
 
-## 교보문고 무게 보완 (fallback)
+## 무게 보완 (fallback): 교보문고 → 알라딘
 
-YES24 페이지에서 무게를 못 찾았고 **ISBN이 있으면**, 팝업에서 교보문고를 조회해 무게(g)만 보완한다. 보완된 무게는 그대로 캐나다 가격 계산과 모든 케이스 복사 양식에 반영된다. (`popup.js`의 `fetchKyoboWeight()`)
+YES24 페이지에서 무게를 못 찾았고 **ISBN이 있으면**, 팝업에서 다른 서점을 조회해 무게(g)만 보완한다. 순서는 **교보문고 → (없으면) 알라딘**. 보완된 무게는 그대로 캐나다 가격 계산과 모든 케이스 복사 양식에 반영되며, 성공하면 상태바(주황 강조 `.weight-ok`)와 무게 필드 배지에 **출처(교보문고/알라딘)** 가 표시된다. (`popup.js`의 `fetchKyoboWeight()` / `fetchAladinWeight()`, `run()`에서 순차 호출)
+
+### 알라딘 (`fetchAladinWeight()`)
+
+1. **검색** — `https://www.aladin.co.kr/search/wsearchresult.aspx?SearchTarget=All&SearchWord=<ISBN>` HTML에서 `wproduct.aspx?ItemId=<번호>` 후보를 뽑음.
+2. **상세페이지** — `https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=<번호>` HTML을 그대로 파싱. 교보와 달리 **서버 렌더링**이라 무게가 HTML에 있음 → `parseAladinWeight()`가 `…mm / 478g` 패턴(치수 뒤 무게)을 우선, `쪽 … 478g`를 폴백으로 추출.
+3. **안전장치** — 상세페이지 HTML에 조회한 ISBN 문자열이 실제로 들어있을 때만 채택(추천 상품 오매칭 방지). 앞쪽 후보 3개까지 시도.
+
+### 교보문고 (`fetchKyoboWeight()`)
 
 동작 순서:
 
