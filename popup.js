@@ -1,0 +1,362 @@
+// ================================================================
+// 페이지(YES24) 안에서 실행될 추출 함수
+// chrome.scripting.executeScript로 주입되므로 완전히 독립적으로 동작해야 함
+// (외부 변수/함수 참조 불가)
+// ================================================================
+function extractYes24BookInfo() {
+  const clean = (s) => (s || "").replace(/\s+/g, " ").trim();
+
+  // ---- 1) 제목: <title> 또는 og:title의 첫 번째 " | " 구간 ----
+  const parseTitleString = (str) => {
+    if (!str) return null;
+    const cleaned = str.replace(/\s*-\s*예스24\s*$/, "").trim();
+    const parts = cleaned.split("|").map((s) => s.trim()).filter(Boolean);
+    return parts.length ? parts : null;
+  };
+  let titleParts = parseTitleString(document.title);
+  if (!titleParts) {
+    const og = document.querySelector('meta[property="og:title"]');
+    if (og) titleParts = parseTitleString(og.content);
+  }
+  const title = titleParts ? titleParts[0] : "";
+
+  // ---- 2) 저자 / 출판사 / 출판일: 제목 아래 "저자정보 | 출판사 | 날짜" 줄에서 ----
+  // 저자 검색 링크(authorNo=)를 기준점으로 삼아 해당 줄 전체(container)를 찾은 뒤,
+  // (a) 앵커(링크) 위치 기반으로 출판사를 우선 추출하고 (더 안정적)
+  // (b) "|" 텍스트 분리 방식을 보조/폴백으로 사용한다.
+  // -> 일부 페이지는 구분자 "|"가 CSS로만 그려져 textContent에 없을 수 있어 (a)를 우선함.
+  let author = "";
+  let publisher = "";
+  let pubDateRaw = "";
+
+  const authorLink = document.querySelector('a[href*="authorNo="]');
+  if (authorLink) {
+    let container = authorLink.parentElement;
+    for (let i = 0; i < 6 && container; i++) {
+      const text = clean(container.textContent);
+      if (/\d{4}년/.test(text)) break;
+      container = container.parentElement;
+    }
+
+    if (container) {
+      const anchors = Array.from(container.querySelectorAll("a"));
+      const authorAnchors = anchors.filter((a) =>
+        (a.getAttribute("href") || "").includes("authorNo=")
+      );
+
+      // (a) 앵커 위치 기반: 마지막 저자 링크 다음에 나오는, authorNo가 아닌 첫 링크 = 출판사
+      let publisherAnchor = null;
+      if (authorAnchors.length) {
+        const lastIdx = anchors.indexOf(authorAnchors[authorAnchors.length - 1]);
+        for (let j = lastIdx + 1; j < anchors.length; j++) {
+          const href = anchors[j].getAttribute("href") || "";
+          const txt = clean(anchors[j].textContent);
+          if (
+            !href.includes("authorNo=") &&
+            txt &&
+            !/^[\d.]+$/.test(txt) &&
+            !txt.includes("보기") &&
+            !txt.includes("리뷰") &&
+            !txt.includes("알림")
+          ) {
+            publisherAnchor = anchors[j];
+            break;
+          }
+        }
+      }
+      if (publisherAnchor) publisher = clean(publisherAnchor.textContent);
+
+      const text = clean(container.textContent);
+      if (text.includes("|")) {
+        // (b) "|" 텍스트 분리 (보조/폴백)
+        const segments = text.split("|").map((s) => clean(s));
+        author = segments[0] || "";
+        if (!publisher) publisher = segments[1] || "";
+        const dateSeg = segments.slice(2).join(" ");
+        const dm = dateSeg.match(/(\d{4})년\s?(\d{1,2})월/);
+        if (dm) pubDateRaw = dm[1] + dm[2].padStart(2, "0");
+      } else {
+        // "|" 문자가 텍스트에 없는 경우: 출판사 앵커 텍스트가 처음 등장하는 지점을
+        // 기준으로 그 앞부분을 저자 전체 텍스트로 간주
+        if (publisherAnchor) {
+          const idx = text.indexOf(clean(publisherAnchor.textContent));
+          if (idx > 0) author = clean(text.slice(0, idx));
+        }
+        const dm = text.match(/(\d{4})년\s?(\d{1,2})월/);
+        if (dm) pubDateRaw = dm[1] + dm[2].padStart(2, "0");
+      }
+    }
+  }
+
+  // ---- 3) 표(품목정보 / 가격정보) 기반 필드: ISBN, 무게, 정가, (발행일 fallback) ----
+  let isbn = "";
+  let weight = "";
+  let priceKRW = "";
+
+  document.querySelectorAll("table tr").forEach((row) => {
+    const th = row.querySelector("th");
+    const td = row.querySelector("td");
+    if (!th || !td) return;
+    const label = clean(th.textContent).replace(/\s+/g, "");
+    const value = clean(td.textContent);
+
+    if (!isbn && label.includes("ISBN13")) {
+      const m = value.match(/[\dXx]{9,13}/);
+      isbn = m ? m[0] : value;
+    }
+    if (!weight && (label.includes("무게") || label.includes("쪽수"))) {
+      const m = value.match(/(\d+(?:\.\d+)?)\s*g\b/);
+      if (m) weight = String(Math.round(parseFloat(m[1])));
+    }
+    if (!pubDateRaw && (label === "발행일" || label.includes("발행일") || label.includes("출간일"))) {
+      const m = value.match(/(\d{4})년\s?(\d{1,2})월/);
+      if (m) pubDateRaw = m[1] + m[2].padStart(2, "0");
+    }
+    if (!priceKRW && label === "정가") {
+      const m = value.replace(/,/g, "").match(/(\d+)/);
+      if (m) priceKRW = m[1];
+    }
+  });
+
+  // ---- fallback: 표에서 못 찾았을 때 본문 텍스트 정규식으로 보조 탐색 ----
+  if (!weight) {
+    const m = document.body.innerText.match(/(\d+(?:\.\d+)?)\s*g(?=\s*\|)/);
+    if (m) weight = String(Math.round(parseFloat(m[1])));
+  }
+  if (!pubDateRaw) {
+    const m = document.body.innerText.match(/(\d{4})년\s?(\d{1,2})월/);
+    if (m) pubDateRaw = m[1] + m[2].padStart(2, "0");
+  }
+
+  // ---- 4) Subject: "관련분류" 아래 카테고리 분류 중 첫 번째 경로만 ----
+  let subject = "";
+  const headingCandidates = Array.from(document.querySelectorAll("*")).filter(
+    (el) => el.children.length === 0 && clean(el.textContent) === "관련분류"
+  );
+  if (headingCandidates.length) {
+    let scope = headingCandidates[0].parentElement;
+    let anchors = [];
+    const linkPattern =
+      /(Main\/(Book|Foreign|used|eBook|Music|Dvd|Gift)\.aspx\?CategoryNumber=|product\/category\/display\/)/;
+    for (let i = 0; i < 4 && scope; i++) {
+      anchors = Array.from(scope.querySelectorAll("a")).filter((a) =>
+        linkPattern.test(a.getAttribute("href") || "")
+      );
+      if (anchors.length) break;
+      scope = scope.parentElement;
+    }
+    if (anchors.length) {
+      const rootPattern = /Main\/(Book|Foreign|used|eBook|Music|Dvd|Gift)\.aspx\?CategoryNumber=/;
+      const rows = [];
+      let current = [];
+      anchors.forEach((a) => {
+        const href = a.getAttribute("href") || "";
+        if (rootPattern.test(href) && current.length) {
+          rows.push(current);
+          current = [];
+        }
+        current.push(clean(a.textContent));
+      });
+      if (current.length) rows.push(current);
+      if (rows.length) subject = rows[0].join(" > ");
+    }
+  }
+
+  return {
+    isbn,
+    title,
+    author: author.trim(),
+    publisher: publisher.trim(),
+    pubDate: pubDateRaw, // YYYYMM
+    weight, // 숫자만 (그램)
+    priceKRW, // 숫자만 (정가)
+    subject,
+    url: location.href,
+  };
+}
+
+// ================================================================
+// 팝업 UI 로직
+// ================================================================
+const FIELD_DEFS = [
+  { key: "isbn", label: "ISBN" },
+  { key: "title", label: "제목" },
+  { key: "author", label: "저자 (표기 그대로)" },
+  { key: "publisher", label: "출판사" },
+  { key: "pubDate", label: "출판일자 (YYYYMM)" },
+  { key: "weight", label: "무게 (g, 숫자만)" },
+  { key: "priceKRW", label: "정가 (KRW)" },
+  { key: "subject", label: "Subject (카테고리)" },
+];
+
+const statusEl = document.getElementById("status");
+const fieldsEl = document.getElementById("fields");
+const toastEl = document.getElementById("toast");
+const rateInput = document.getElementById("discountRate");
+const canadaPriceDisplay = document.getElementById("canadaPriceDisplay");
+
+let currentData = null;
+
+// ---- 유틸 ----
+function showToast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add("show");
+  setTimeout(() => toastEl.classList.remove("show"), 1300);
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(
+    () => showToast("복사됨 (엑셀에 붙여넣기 하세요)"),
+    () => showToast("복사 실패")
+  );
+}
+
+function escapeHtml(str) {
+  const d = document.createElement("div");
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+// 캐나다 가격 계산
+// x = (KRW * 할인율 / 960) + (무게(g) * 0.001 * 13)
+// raw = x + x*53/47  (= x * 100/47)
+// 0.5 단위 올림 반올림: 10 < raw <=10.5 -> 10.5 / 10.5 < raw <=11 -> 11
+function computeCanadaPrice(krw, weightG, discountRate) {
+  const krwNum = parseFloat(krw);
+  const weightNum = parseFloat(weightG);
+  if (!krwNum || !weightNum || !discountRate) return 0; // 무게 없으면 0 처리
+  const x = (krwNum * discountRate) / 960 + weightNum * 0.001 * 13;
+  const raw = x + (x * 53) / 47;
+  const rawFixed = Math.round(raw * 1e6) / 1e6; // 부동소수점 오차 보정
+  return Math.ceil(rawFixed / 0.5) * 0.5;
+}
+
+function getDiscountRate() {
+  const v = parseFloat(rateInput.value);
+  return isNaN(v) ? 0.775 : v;
+}
+
+function render(data) {
+  currentData = data;
+  fieldsEl.innerHTML = "";
+  FIELD_DEFS.forEach(({ key, label }) => {
+    const value = data[key];
+    const div = document.createElement("div");
+    div.className = "field";
+    div.innerHTML = `
+      <div>
+        <div class="label">${label}</div>
+        <div class="value ${value ? "" : "empty"}">${
+      value ? escapeHtml(String(value)) : "찾지 못함"
+    }</div>
+      </div>
+      <button class="copy-btn" data-key="${key}">복사</button>
+    `;
+    fieldsEl.appendChild(div);
+  });
+
+  fieldsEl.querySelectorAll(".copy-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.key;
+      copyText(String(data[key] || ""));
+    });
+  });
+
+  updateCanadaPriceDisplay();
+}
+
+function updateCanadaPriceDisplay() {
+  if (!currentData) return;
+  const cad = computeCanadaPrice(currentData.priceKRW, currentData.weight, getDiscountRate());
+  canadaPriceDisplay.textContent = "CAD " + cad;
+}
+
+// ---- 케이스별 컬럼 빌더 (탭으로 구분 → 엑셀 붙여넣기 시 셀 분리됨) ----
+function buildCase1(d, cad) {
+  // 캐나다가격 | 빈칸 | Title | Publisher | Author | Copies(빈칸) | KRW | Weight
+  return [cad, "", d.title, d.publisher, d.author, "", d.priceKRW, d.weight].join("\t");
+}
+
+function buildCase2(d, cad) {
+  // ISBN | 제목 | 캐나다가격 | 빈칸 | 빈칸 | Copies | 빈칸 | Author | 출판일자 | Publisher | Subject | Copies | KRW | Weight
+  return [
+    d.isbn,
+    d.title,
+    cad,
+    "",
+    "",
+    "",
+    "",
+    d.author,
+    d.pubDate,
+    d.publisher,
+    d.subject,
+    "",
+    d.priceKRW,
+    d.weight,
+  ].join("\t");
+}
+
+function buildCase3(d, cad) {
+  // 1번줄: ISBN | 빈칸 | 캐나다가격 | 빈칸 | 빈칸 | Copies | 빈칸 | 빈칸 | Pub.Date | 빈칸 | 빈칸 | Subject
+  // 2번줄: 빈칸 | Title | 빈칸 | 빈칸 | 빈칸 | Copies | 빈칸 | Author | 빈칸 | 빈칸 | Publisher | 빈칸
+  const row1 = [d.isbn, "", cad, "", "", "", "", "", d.pubDate, "", "", d.subject].join("\t");
+  const row2 = ["", d.title, "", "", "", "", "", d.author, "", "", d.publisher, ""].join("\t");
+  return row1 + "\n" + row2;
+}
+
+// ---- 실행 ----
+async function run() {
+  statusEl.textContent = "불러오는 중…";
+  fieldsEl.innerHTML = "";
+  currentData = null;
+  canadaPriceDisplay.textContent = "CAD -";
+
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+  if (!tab || !tab.url || !/^https:\/\/www\.yes24\.com\/product\/goods\//.test(tab.url)) {
+    statusEl.textContent =
+      "이 페이지는 YES24 도서 상세페이지가 아니에요. yes24.com/product/goods/ 로 시작하는 상품 페이지에서 열어주세요.";
+    return;
+  }
+
+  try {
+    const [{ result }] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: extractYes24BookInfo,
+    });
+    statusEl.textContent = "추출 완료. 원하는 양식 버튼을 눌러 복사하세요.";
+    render(result);
+  } catch (e) {
+    statusEl.textContent = "추출 중 오류가 발생했어요: " + e.message;
+  }
+}
+
+// ---- 이벤트 ----
+document.getElementById("case1Btn").addEventListener("click", () => {
+  if (!currentData) return;
+  const cad = computeCanadaPrice(currentData.priceKRW, currentData.weight, getDiscountRate());
+  copyText(buildCase1(currentData, cad));
+});
+document.getElementById("case2Btn").addEventListener("click", () => {
+  if (!currentData) return;
+  const cad = computeCanadaPrice(currentData.priceKRW, currentData.weight, getDiscountRate());
+  copyText(buildCase2(currentData, cad));
+});
+document.getElementById("case3Btn").addEventListener("click", () => {
+  if (!currentData) return;
+  const cad = computeCanadaPrice(currentData.priceKRW, currentData.weight, getDiscountRate());
+  copyText(buildCase3(currentData, cad));
+});
+document.getElementById("reloadBtn").addEventListener("click", run);
+
+rateInput.addEventListener("input", () => {
+  chrome.storage.local.set({ discountRate: rateInput.value });
+  updateCanadaPriceDisplay();
+});
+
+// ---- 초기화: 저장된 할인율 불러오기 후 추출 시작 ----
+chrome.storage.local.get(["discountRate"], (res) => {
+  if (res && res.discountRate) rateInput.value = res.discountRate;
+  run();
+});

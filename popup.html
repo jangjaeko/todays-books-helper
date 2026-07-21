@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>YES24 도서정보 추출</title>
+<style>
+  :root {
+    --accent: #0064ff;
+    --border: #e2e5ea;
+    --text: #222;
+    --muted: #888;
+    --bg-soft: #f7f8fa;
+  }
+  * { box-sizing: border-box; }
+  body {
+    width: 380px;
+    margin: 0;
+    padding: 14px;
+    font-family: -apple-system, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    color: var(--text);
+    background: #fff;
+  }
+  h1 {
+    font-size: 15px;
+    margin: 0 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  h1 .badge {
+    font-size: 10px;
+    color: #fff;
+    background: var(--accent);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+  #status {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    line-height: 1.4;
+  }
+
+  .section-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    margin: 12px 0 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .rate-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+  }
+  .rate-row label { font-size: 12px; color: var(--text); white-space: nowrap; }
+  .rate-row input {
+    flex: 1;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+    width: 70px;
+  }
+  .rate-row .canada-price {
+    margin-left: auto;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  .field {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 10px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .field .label {
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 2px;
+  }
+  .field .value {
+    font-size: 12.5px;
+    font-weight: 500;
+    word-break: break-all;
+  }
+  .field .value.empty {
+    color: #c33;
+    font-weight: 400;
+  }
+  .copy-btn {
+    flex-shrink: 0;
+    border: none;
+    background: #f2f4f7;
+    color: #555;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .copy-btn:hover { background: #e6e9ee; }
+
+  .case-btn {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #fff;
+    cursor: pointer;
+    font-size: 12.5px;
+  }
+  .case-btn:hover { background: var(--bg-soft); }
+  .case-btn .case-name { font-weight: 700; }
+  .case-btn .case-desc { display: block; font-size: 10.5px; color: var(--muted); margin-top: 1px; }
+
+  .actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .actions button {
+    flex: 1;
+    padding: 8px;
+    border-radius: 8px;
+    border: none;
+    font-size: 12px;
+    cursor: pointer;
+    font-weight: 600;
+    background: #f2f4f7;
+    color: #333;
+  }
+
+  #toast {
+    position: fixed;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #222;
+    color: #fff;
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    opacity: 0;
+    transition: opacity .2s;
+    pointer-events: none;
+  }
+  #toast.show { opacity: 0.92; }
+
+  details { margin-top: 4px; }
+  summary { font-size: 11px; color: var(--muted); cursor: pointer; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+  <h1>📚 YES24 도서정보 추출<span class="badge">개인용</span></h1>
+  <div id="status">불러오는 중…</div>
+
+  <div class="rate-row">
+    <label for="discountRate">할인율</label>
+    <input type="number" id="discountRate" step="0.001" value="0.775" />
+    <span class="canada-price" id="canadaPriceDisplay">CAD -</span>
+  </div>
+
+  <div class="section-title">양식 선택 후 복사 (엑셀 붙여넣기용)</div>
+  <button class="case-btn" id="case1Btn">
+    <span class="case-name">Case 1 · SALES</span>
+    <span class="case-desc">캐나다가격ㅣ빈칸ㅣTitleㅣPublisherㅣAuthorㅣCopiesㅣKRWㅣWeight</span>
+  </button>
+  <button class="case-btn" id="case2Btn">
+    <span class="case-name">Case 2 · 선박</span>
+    <span class="case-desc">ISBNㅣ제목ㅣ캐나다가격ㅣ…ㅣAuthorㅣ출판일자ㅣPublisherㅣSubjectㅣ…ㅣKRWㅣWeight</span>
+  </button>
+  <button class="case-btn" id="case3Btn">
+    <span class="case-name">Case 3 · LBI (2줄)</span>
+    <span class="case-desc">1줄: ISBN/캐나다가격/Pub.Date/Subject · 2줄: Title/Author/Publisher</span>
+  </button>
+
+  <details>
+    <summary>추출된 원본 값 보기 / 개별 복사</summary>
+    <div id="fields"></div>
+  </details>
+
+  <div class="actions">
+    <button id="reloadBtn">다시 추출</button>
+  </div>
+  <div id="toast"></div>
+  <script src="popup.js"></script>
+</body>
+</html>

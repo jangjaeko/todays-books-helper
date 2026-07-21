@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "YES24 도서정보 추출기",
+  "version": "1.0.0",
+  "description": "YES24 도서 상세페이지에서 제목/저자/출판사/출판일자/무게 정보만 뽑아서 보여주는 개인용 도구 (비상업적)",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["https://www.yes24.com/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "YES24 도서정보 추출"
+  }
+}
