@@ -317,15 +317,15 @@ function render(data) {
   fieldsEl.innerHTML = "";
   FIELD_DEFS.forEach(({ key, label }) => {
     const value = data[key];
-    const labelText =
+    const sourceBadge =
       key === "weight" && data.weightSource
-        ? `${label} · ${data.weightSource}에서 보완`
-        : label;
+        ? ` <span class="src-badge">${data.weightSource} 보완</span>`
+        : "";
     const div = document.createElement("div");
     div.className = "field";
     div.innerHTML = `
       <div>
-        <div class="label">${labelText}</div>
+        <div class="label">${label}${sourceBadge}</div>
         <div class="value ${value ? "" : "empty"}">${
       value ? escapeHtml(String(value)) : "찾지 못함"
     }</div>
@@ -387,6 +387,7 @@ function buildCase3(d, cad) {
 
 // ---- 실행 ----
 async function run() {
+  statusEl.classList.remove("kyobo-ok");
   statusEl.textContent = "불러오는 중…";
   fieldsEl.innerHTML = "";
   currentData = null;
@@ -417,8 +418,9 @@ async function run() {
           currentData.weight = w;
           currentData.weightSource = "교보문고";
           render(currentData);
+          statusEl.classList.add("kyobo-ok");
           statusEl.textContent =
-            "무게를 교보문고에서 보완했습니다. 양식 버튼을 눌러 복사하세요.";
+            "✅ 무게 " + w + "g 를 교보문고에서 보완했습니다. 양식 버튼을 눌러 복사하세요.";
         } else {
           statusEl.textContent =
             "교보문고에서도 무게를 찾지 못했습니다. (무게 없이 계산됨)";

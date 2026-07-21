@@ -41,6 +41,27 @@
     margin-bottom: 10px;
     line-height: 1.4;
   }
+  /* 교보문고 무게 보완 성공 시: 눈에 확 띄게 */
+  #status.kyobo-ok {
+    color: #b23a00;
+    font-weight: 700;
+    background: #fff3e6;
+    border: 1px solid #ffcfa3;
+    border-radius: 6px;
+    padding: 7px 9px;
+  }
+  /* 무게 필드 옆 출처 배지 */
+  .src-badge {
+    display: inline-block;
+    color: #fff;
+    background: #ff6a00;
+    font-weight: 700;
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    margin-left: 4px;
+    vertical-align: middle;
+  }
 
   .section-title {
     font-size: 11px;
@@ -196,7 +217,7 @@
   </details>
 
   <div class="actions">
-    <button id="reloadBtn">다시 추출</button>
+    <button id="reloadBtn">다시추출 (교보문고 검색)</button>
   </div>
   <div id="toast"></div>
   <script src="popup.js"></script>
