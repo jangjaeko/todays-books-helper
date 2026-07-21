@@ -2,9 +2,13 @@
   "manifest_version": 3,
   "name": "YES24 도서정보 추출기",
   "version": "1.0.0",
-  "description": "YES24 도서 상세페이지에서 제목/저자/출판사/출판일자/무게 정보만 뽑아서 보여주는 개인용 도구 (비상업적)",
+  "description": "YES24 도서 상세페이지에서 제목/저자/출판사/출판일자/무게 정보만 뽑아서 보여주는 개인용 도구 (비상업적). 무게가 없으면 교보문고에서 보완.",
   "permissions": ["activeTab", "scripting", "storage"],
-  "host_permissions": ["https://www.yes24.com/*"],
+  "host_permissions": [
+    "https://www.yes24.com/*",
+    "https://search.kyobobook.co.kr/*",
+    "https://product.kyobobook.co.kr/*"
+  ],
   "action": {
     "default_popup": "popup.html",
     "default_title": "YES24 도서정보 추출"

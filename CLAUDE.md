@@ -37,7 +37,7 @@ yes24-extractor/
 | 저자 | `author` | **YES24에 표기된 문자열 그대로** (역할 표기 포함) |
 | 출판사 | `publisher` | 제목 아래 정보줄의 출판사 |
 | 출판일자 | `pubDate` | **YYYYMM** 형식 (예: `202607`) |
-| 무게 | `weight` | **숫자만, 단위 g 생략** (예: `188`) |
+| 무게 | `weight` | **숫자만, 단위 g 생략** (예: `188`). YES24에 없으면 **교보문고에서 보완** (아래 참조) |
 | 정가 | `priceKRW` | 상품 가격정보 표의 **정가** (판매가/할인가 아님), 숫자만 |
 | Subject | `subject` | "관련분류 > 카테고리 분류"의 **첫 번째 경로만**, `>` 로 이어붙임 |
 
@@ -60,6 +60,24 @@ yes24-extractor/
   - 페이지에 따라 구분자 `|`가 실제 텍스트가 아니라 CSS로만 그려질 수 있어 (a)를 우선함.
 
 표(`table tr`)의 `th`/`td` 라벨 매칭은 발행일·무게·ISBN·정가에 사용. 못 찾으면 `document.body.innerText` 정규식 폴백.
+
+## 교보문고 무게 보완 (fallback)
+
+YES24 페이지에서 무게를 못 찾았고 **ISBN이 있으면**, 팝업에서 교보문고를 조회해 무게(g)만 보완한다. 보완된 무게는 그대로 캐나다 가격 계산과 모든 케이스 복사 양식에 반영된다. (`popup.js`의 `fetchKyoboWeight()`)
+
+동작 순서:
+
+1. **교보 검색** — `https://search.kyobobook.co.kr/search?keyword=<ISBN>&gbCode=TOT&target=total`
+   - 이 검색 결과 페이지는 서버 렌더링이라 HTML 안에 `/detail/S번호` 링크가 들어있음 → 정규식으로 앞쪽 상품번호(S번호) 후보를 수집.
+2. **교보 상세 API** — `https://product.kyobobook.co.kr/api/gw/pdt/product/<S번호>` (JSON)
+   - 무게는 `data.middle.basicInfo.weight` (그램 정수). 구조 변경 대비해 재귀 폴백으로 `weight`/`isbn` 키를 탐색.
+
+**중요한 안전장치**: 교보는 **검색 결과가 없으면 베스트셀러를 대신 노출**한다. 그래서 상세 API가 돌려준 `isbn`이 조회한 ISBN과 **일치할 때만** 무게를 채택한다(불일치 시 다음 후보로, 최대 3개). 이 검증이 없으면 엉뚱한 책의 무게가 조용히 들어갈 수 있음.
+
+기술 메모:
+- fetch는 팝업 컨텍스트에서 실행되며, `manifest.json`의 `host_permissions`(`search.kyobobook.co.kr`, `product.kyobobook.co.kr`)로 CORS를 우회한다.
+- 교보 **상세 페이지 자체는 SPA(클라이언트 렌더링)** 라 raw HTML fetch로는 무게가 안 나옴 → 반드시 위 JSON API를 써야 함.
+- 보완에 성공하면 팝업의 무게 필드 라벨에 "· 교보문고에서 보완"이 표시된다.
 
 ## 캐나다 가격 계산
 

@@ -236,16 +236,96 @@ function getDiscountRate() {
   return isNaN(v) ? 0.775 : v;
 }
 
+// ================================================================
+// 교보문고 무게 보완
+// YES24에서 무게를 못 찾았을 때, ISBN으로 교보문고를 조회해 무게(g)만 가져온다.
+//   1) 교보 검색 HTML(서버 렌더링)에서 첫 상품 상세 링크(/detail/S번호)를 뽑고
+//   2) 교보 상세 API(JSON)에서 무게를 읽는다.
+// 안전장치: 검색 결과가 없으면 교보가 "베스트셀러"를 대신 노출하므로,
+//           상세 API가 돌려준 ISBN이 조회한 ISBN과 일치할 때만 채택한다.
+// (fetch는 팝업 컨텍스트에서 실행 — manifest host_permissions로 CORS 우회)
+// ================================================================
+function normIsbn(s) {
+  return String(s || "").toUpperCase().replace(/[^0-9X]/g, "");
+}
+
+// 교보 상세 API JSON에서 { isbn, weight } 추출.
+// 알려진 경로(data.middle.basicInfo)를 우선하고, 구조가 바뀌어도 견디도록 재귀 폴백.
+function extractKyoboInfo(json) {
+  const bi = json && json.data && json.data.middle && json.data.middle.basicInfo;
+  let isbn = bi && bi.isbn;
+  let weight = bi && typeof bi.weight === "number" ? bi.weight : null;
+
+  if (!weight || !isbn) {
+    const walk = (o) => {
+      if (!o || typeof o !== "object") return;
+      for (const k of Object.keys(o)) {
+        const v = o[k];
+        const kl = k.toLowerCase();
+        if (weight == null && kl === "weight" && typeof v === "number" && v > 0 && v < 100000) weight = v;
+        if (!isbn && (kl === "isbn" || kl === "isbn13") && typeof v === "string" && normIsbn(v).length >= 10) isbn = v;
+        if (v && typeof v === "object") walk(v);
+      }
+    };
+    walk(json);
+  }
+  return { isbn, weight };
+}
+
+async function fetchKyoboWeight(isbn) {
+  const target = normIsbn(isbn);
+  if (target.length < 10) return null;
+
+  // 1) 교보 검색 → 후보 상품번호(S번호) 목록 (등장 순서, 중복 제거)
+  const searchUrl =
+    "https://search.kyobobook.co.kr/search?keyword=" +
+    encodeURIComponent(isbn) +
+    "&gbCode=TOT&target=total";
+  const res = await fetch(searchUrl, { credentials: "omit" });
+  if (!res.ok) throw new Error("교보 검색 실패(" + res.status + ")");
+  const html = await res.text();
+
+  const ids = [];
+  const re = /\/detail\/(S\d+)/g;
+  let m;
+  while ((m = re.exec(html)) && ids.length < 8) {
+    if (!ids.includes(m[1])) ids.push(m[1]);
+  }
+  if (!ids.length) return null;
+
+  // 2) 후보 상세 API를 순회하며 ISBN이 일치하는 상품의 무게를 채택 (앞쪽 3개만)
+  for (const sid of ids.slice(0, 3)) {
+    try {
+      const r2 = await fetch(
+        "https://product.kyobobook.co.kr/api/gw/pdt/product/" + sid,
+        { credentials: "omit", headers: { Accept: "application/json" } }
+      );
+      if (!r2.ok) continue;
+      const info = extractKyoboInfo(await r2.json());
+      if (info.weight > 0 && normIsbn(info.isbn) === target) {
+        return String(Math.round(info.weight));
+      }
+    } catch (_) {
+      /* 다음 후보 계속 */
+    }
+  }
+  return null;
+}
+
 function render(data) {
   currentData = data;
   fieldsEl.innerHTML = "";
   FIELD_DEFS.forEach(({ key, label }) => {
     const value = data[key];
+    const labelText =
+      key === "weight" && data.weightSource
+        ? `${label} · ${data.weightSource}에서 보완`
+        : label;
     const div = document.createElement("div");
     div.className = "field";
     div.innerHTML = `
       <div>
-        <div class="label">${label}</div>
+        <div class="label">${labelText}</div>
         <div class="value ${value ? "" : "empty"}">${
       value ? escapeHtml(String(value)) : "찾지 못함"
     }</div>
@@ -327,6 +407,26 @@ async function run() {
     });
     statusEl.textContent = "추출 완료. 원하는 양식 버튼을 눌러 복사하세요.";
     render(result);
+
+    // 무게가 없으면 교보문고에서 보완 (ISBN 필요)
+    if (!result.weight && result.isbn) {
+      statusEl.textContent = "무게 정보가 없어 교보문고에서 조회 중…";
+      try {
+        const w = await fetchKyoboWeight(result.isbn);
+        if (w) {
+          currentData.weight = w;
+          currentData.weightSource = "교보문고";
+          render(currentData);
+          statusEl.textContent =
+            "무게를 교보문고에서 보완했습니다. 양식 버튼을 눌러 복사하세요.";
+        } else {
+          statusEl.textContent =
+            "교보문고에서도 무게를 찾지 못했습니다. (무게 없이 계산됨)";
+        }
+      } catch (e2) {
+        statusEl.textContent = "교보문고 조회 실패: " + e2.message + " (무게 없이 계산됨)";
+      }
+    }
   } catch (e) {
     statusEl.textContent = "추출 중 오류가 발생했어요: " + e.message;
   }
