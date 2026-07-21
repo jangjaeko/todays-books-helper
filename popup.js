@@ -374,32 +374,75 @@ function render(data) {
   fieldsEl.innerHTML = "";
   FIELD_DEFS.forEach(({ key, label }) => {
     const value = data[key];
-    const sourceBadge =
-      key === "weight" && data.weightSource
-        ? ` <span class="src-badge">${data.weightSource} 보완</span>`
-        : "";
     const div = document.createElement("div");
     div.className = "field";
-    div.innerHTML = `
-      <div>
-        <div class="label">${label}${sourceBadge}</div>
-        <div class="value ${value ? "" : "empty"}">${
-      value ? escapeHtml(String(value)) : "찾지 못함"
-    }</div>
-      </div>
-      <button class="copy-btn" data-key="${key}">복사</button>
-    `;
+    if (key === "weight") {
+      // 무게는 직접 수정 가능한 입력창 (입력 시 CAD 가격·복사 양식에 즉시 반영)
+      div.innerHTML = `
+        <div class="field-main">
+          <div class="label">${label}${weightBadgeHtml(data.weightSource)}</div>
+          <input class="weight-input" type="number" min="0" step="1"
+                 value="${value ? escapeHtml(String(value)) : ""}" placeholder="직접 입력 (g)" />
+        </div>
+        <button class="copy-btn" data-key="weight">복사</button>
+      `;
+    } else {
+      div.innerHTML = `
+        <div>
+          <div class="label">${label}</div>
+          <div class="value ${value ? "" : "empty"}">${
+        value ? escapeHtml(String(value)) : "찾지 못함"
+      }</div>
+        </div>
+        <button class="copy-btn" data-key="${key}">복사</button>
+      `;
+    }
     fieldsEl.appendChild(div);
   });
 
   fieldsEl.querySelectorAll(".copy-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const key = btn.dataset.key;
-      copyText(String(data[key] || ""));
+      copyText(String(currentData[key] || ""));
     });
   });
 
+  // 무게 직접 입력 → currentData 갱신 + 재계산 (재렌더 없이 값만 반영해 포커스 유지)
+  const wInput = fieldsEl.querySelector(".weight-input");
+  if (wInput) {
+    wInput.addEventListener("input", () => {
+      const raw = wInput.value.trim();
+      const badge = document.getElementById("weightSrcBadge");
+      if (raw) {
+        currentData.weight = String(Math.round(parseFloat(raw) || 0));
+        currentData.weightSource = "직접 입력";
+        if (badge) {
+          badge.textContent = "직접 입력";
+          badge.style.display = "";
+        }
+        statusEl.classList.remove("weight-fail");
+        statusEl.classList.add("weight-ok");
+        statusEl.textContent =
+          "✅ 무게 " + currentData.weight + "g (직접 입력). 양식 버튼을 눌러 복사하세요.";
+      } else {
+        currentData.weight = "";
+        currentData.weightSource = "";
+        if (badge) badge.style.display = "none";
+        statusEl.classList.remove("weight-ok", "weight-fail");
+        statusEl.textContent = "무게를 직접 입력하면 가격이 다시 계산됩니다.";
+      }
+      updateCanadaPriceDisplay();
+    });
+  }
+
   updateCanadaPriceDisplay();
+}
+
+// 무게 출처 배지 HTML. src 없으면 숨김 상태로 자리만 잡아 둔다(직접 입력 시 갱신용).
+function weightBadgeHtml(src) {
+  if (!src) return `<span class="src-badge" id="weightSrcBadge" style="display:none"></span>`;
+  const text = src === "직접 입력" ? "직접 입력" : src + " 보완";
+  return `<span class="src-badge" id="weightSrcBadge">${text}</span>`;
 }
 
 function updateCanadaPriceDisplay() {
