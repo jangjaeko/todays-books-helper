@@ -460,7 +460,7 @@ function buildCase1(d, cad) {
 }
 
 function buildCase2(d, cad) {
-  // ISBN | 제목 | 캐나다가격 | 빈칸 | 빈칸 | Copies(1) | 빈칸 | Author | 출판일자 | Publisher | Subject | Copies(1) | 빈칸 | KRW | Weight
+  // ISBN | 제목 | 캐나다가격 | 빈칸 | 빈칸 | Copies(1) | 빈칸 | Author | 날짜 | 빈칸 | 출판사 | 장르(Subject) | Copies(1) | KRW | Weight
   return [
     d.isbn,
     d.title,
@@ -470,11 +470,11 @@ function buildCase2(d, cad) {
     COPIES,
     "",
     d.author,
-    d.pubDate,
-    d.publisher,
-    d.subject,
+    d.pubDate, // 날짜
+    "", // 날짜와 출판사 사이 빈칸
+    d.publisher, // 출판사
+    d.subject, // 장르
     COPIES,
-    "", // Subject~KRW 사이 빈칸 (KRW 바로 앞)
     d.priceKRW,
     d.weight,
   ].join("\t");

@@ -119,9 +119,9 @@ raw = x + (x × 53 / 47)          // = x × 100/47
 
 ### Case 2 — 선박
 ```
-ISBN | 제목 | 캐나다가격 | 빈칸 | 빈칸 | Copies(1) | 빈칸 | Author | 출판일자 | Publisher | Subject | Copies(1) | 빈칸 | KRW | Weight
+ISBN | 제목 | 캐나다가격 | 빈칸 | 빈칸 | Copies(1) | 빈칸 | Author | 날짜 | 빈칸 | 출판사 | 장르(Subject) | Copies(1) | KRW | Weight
 ```
-- Subject와 KRW 사이에 **빈칸 1개**가 있음(KRW 바로 앞). 즉 `Subject | Copies(1) | 빈칸 | KRW`.
+- 꼬리 구조: `날짜 | 빈칸 | 출판사 | 장르 | Copies(1) | KRW | Weight` — 빈칸은 **날짜와 출판사 사이**.
 
 ### Case 3 — LBI (책 1권당 **2줄** 사용)
 1번줄과 2번줄을 `\n`으로 이어 붙여 복사. 12개 컬럼.
