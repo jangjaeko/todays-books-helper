@@ -110,17 +110,18 @@ raw = x + (x × 53 / 47)          // = x × 100/47
 ## 복사 양식 (3가지 케이스)
 
 **모든 출력은 탭(`\t`) 구분** — 엑셀에 붙여넣으면 셀 단위로 나뉘어야 함. 라벨("제목:", "저자:" 등)은 **붙이지 않고 값만** 출력.
-아래 표에서 `|` 하나 = 엑셀 셀 하나. "빈칸"은 빈 문자열, "Copies"는 값을 채우지 않음(사용자가 직접 입력).
+아래 표에서 `|` 하나 = 엑셀 셀 하나. "빈칸"은 빈 문자열. **"Copies"는 기본값 `1`** (팝업 `popup.js`의 `COPIES` 상수, 사용자가 엑셀에서 필요시 수정).
 
 ### Case 1 — SALES
 ```
-캐나다가격 | 빈칸 | Title | Publisher | Author | Copies | KRW | Weight
+캐나다가격 | 빈칸 | Title | Publisher | Author | Copies(1) | KRW | Weight
 ```
 
 ### Case 2 — 선박
 ```
-ISBN | 제목 | 캐나다가격 | 빈칸 | 빈칸 | Copies | 빈칸 | Author | 출판일자 | Publisher | Subject | Copies | KRW | Weight
+ISBN | 제목 | 캐나다가격 | 빈칸 | 빈칸 | Copies(1) | 빈칸 | Author | 출판일자 | Publisher | Subject | Copies(1) | 빈칸 | KRW | Weight
 ```
+- Subject와 KRW 사이에 **빈칸 1개**가 있음(KRW 바로 앞). 즉 `Subject | Copies(1) | 빈칸 | KRW`.
 
 ### Case 3 — LBI (책 1권당 **2줄** 사용)
 1번줄과 2번줄을 `\n`으로 이어 붙여 복사. 12개 컬럼.

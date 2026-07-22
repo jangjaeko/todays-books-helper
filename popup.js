@@ -452,36 +452,39 @@ function updateCanadaPriceDisplay() {
 }
 
 // ---- 케이스별 컬럼 빌더 (탭으로 구분 → 엑셀 붙여넣기 시 셀 분리됨) ----
+const COPIES = "1"; // Copies 기본값 (사용자가 엑셀에서 필요시 수정)
+
 function buildCase1(d, cad) {
-  // 캐나다가격 | 빈칸 | Title | Publisher | Author | Copies(빈칸) | KRW | Weight
-  return [cad, "", d.title, d.publisher, d.author, "", d.priceKRW, d.weight].join("\t");
+  // 캐나다가격 | 빈칸 | Title | Publisher | Author | Copies(1) | KRW | Weight
+  return [cad, "", d.title, d.publisher, d.author, COPIES, d.priceKRW, d.weight].join("\t");
 }
 
 function buildCase2(d, cad) {
-  // ISBN | 제목 | 캐나다가격 | 빈칸 | 빈칸 | Copies | 빈칸 | Author | 출판일자 | Publisher | Subject | Copies | KRW | Weight
+  // ISBN | 제목 | 캐나다가격 | 빈칸 | 빈칸 | Copies(1) | 빈칸 | Author | 출판일자 | Publisher | Subject | Copies(1) | 빈칸 | KRW | Weight
   return [
     d.isbn,
     d.title,
     cad,
     "",
     "",
-    "",
+    COPIES,
     "",
     d.author,
     d.pubDate,
     d.publisher,
     d.subject,
-    "",
+    COPIES,
+    "", // Subject~KRW 사이 빈칸 (KRW 바로 앞)
     d.priceKRW,
     d.weight,
   ].join("\t");
 }
 
 function buildCase3(d, cad) {
-  // 1번줄: ISBN | 빈칸 | 캐나다가격 | 빈칸 | 빈칸 | Copies | 빈칸 | 빈칸 | Pub.Date | 빈칸 | 빈칸 | Subject
-  // 2번줄: 빈칸 | Title | 빈칸 | 빈칸 | 빈칸 | Copies | 빈칸 | Author | 빈칸 | 빈칸 | Publisher | 빈칸
-  const row1 = [d.isbn, "", cad, "", "", "", "", "", d.pubDate, "", "", d.subject].join("\t");
-  const row2 = ["", d.title, "", "", "", "", "", d.author, "", "", d.publisher, ""].join("\t");
+  // 1번줄: ISBN | 빈칸 | 캐나다가격 | 빈칸 | 빈칸 | Copies(1) | 빈칸 | 빈칸 | Pub.Date | 빈칸 | 빈칸 | Subject
+  // 2번줄: 빈칸 | Title | 빈칸 | 빈칸 | 빈칸 | Copies(1) | 빈칸 | Author | 빈칸 | 빈칸 | Publisher | 빈칸
+  const row1 = [d.isbn, "", cad, "", "", COPIES, "", "", d.pubDate, "", "", d.subject].join("\t");
+  const row2 = ["", d.title, "", "", "", COPIES, "", d.author, "", "", d.publisher, ""].join("\t");
   return row1 + "\n" + row2;
 }
 
