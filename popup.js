@@ -482,9 +482,10 @@ function buildCase2(d, cad) {
 
 function buildCase3(d, cad) {
   // 1번줄: ISBN | 빈칸 | 캐나다가격 | 빈칸 | 빈칸 | Copies(1) | 빈칸 | 빈칸 | Pub.Date | 빈칸 | 빈칸 | Subject
-  // 2번줄: 빈칸 | Title | 빈칸 | 빈칸 | 빈칸 | Copies(1) | 빈칸 | Author | 빈칸 | 빈칸 | Publisher | 빈칸
+  // 2번줄: 빈칸 | Title | 빈칸 | 빈칸 | 빈칸 | 빈칸    | 빈칸 | Author | 빈칸 | 빈칸 | Publisher | 빈칸
+  //   → Copies는 윗줄에만 표기 (2번줄 6번 컬럼은 빈칸)
   const row1 = [d.isbn, "", cad, "", "", COPIES, "", "", d.pubDate, "", "", d.subject].join("\t");
-  const row2 = ["", d.title, "", "", "", COPIES, "", d.author, "", "", d.publisher, ""].join("\t");
+  const row2 = ["", d.title, "", "", "", "", "", d.author, "", "", d.publisher, ""].join("\t");
   return row1 + "\n" + row2;
 }
 
