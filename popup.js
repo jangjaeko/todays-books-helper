@@ -193,6 +193,7 @@ const statusEl = document.getElementById("status");
 const fieldsEl = document.getElementById("fields");
 const toastEl = document.getElementById("toast");
 const rateInput = document.getElementById("discountRate");
+const marginInput = document.getElementById("marginInput");
 const canadaPriceDisplay = document.getElementById("canadaPriceDisplay");
 
 let currentData = null;
@@ -219,14 +220,16 @@ function escapeHtml(str) {
 
 // 캐나다 가격 계산
 // x = (KRW * 할인율 / 960) + (무게(g) * 0.001 * 13)
-// raw = x + x*53/47  (= x * 100/47)
+// raw = x + x*margin/(100-margin)  (마진 53 기준으로는 x * 100/47 과 동일)
 // 0.5 단위 올림 반올림: 10 < raw <=10.5 -> 10.5 / 10.5 < raw <=11 -> 11
-function computeCanadaPrice(krw, weightG, discountRate) {
+function computeCanadaPrice(krw, weightG, discountRate, margin) {
   const krwNum = parseFloat(krw);
   const weightNum = parseFloat(weightG);
   if (!krwNum || !weightNum || !discountRate) return 0; // 무게 없으면 0 처리
+  const denom = 100 - margin;
+  if (denom <= 0) return 0; // 마진값이 100 이상이면 계산 불가
   const x = (krwNum * discountRate) / 960 + weightNum * 0.001 * 13;
-  const raw = x + (x * 53) / 47;
+  const raw = x + (x * margin) / denom;
   const rawFixed = Math.round(raw * 1e6) / 1e6; // 부동소수점 오차 보정
   return Math.ceil(rawFixed / 0.5) * 0.5;
 }
@@ -234,6 +237,11 @@ function computeCanadaPrice(krw, weightG, discountRate) {
 function getDiscountRate() {
   const v = parseFloat(rateInput.value);
   return isNaN(v) ? 0.775 : v;
+}
+
+function getMargin() {
+  const v = parseFloat(marginInput.value);
+  return isNaN(v) ? 53 : v;
 }
 
 // ================================================================
@@ -447,7 +455,7 @@ function weightBadgeHtml(src) {
 
 function updateCanadaPriceDisplay() {
   if (!currentData) return;
-  const cad = computeCanadaPrice(currentData.priceKRW, currentData.weight, getDiscountRate());
+  const cad = computeCanadaPrice(currentData.priceKRW, currentData.weight, getDiscountRate(), getMargin());
   canadaPriceDisplay.textContent = "CAD " + cad;
 }
 
@@ -491,7 +499,7 @@ function buildCase3(d, cad) {
 
 // ---- 실행 ----
 async function run() {
-  statusEl.classList.remove("weight-ok", "weight-fail", "loading");
+  statusEl.classList.remove("extract-ok", "weight-ok", "weight-fail", "loading");
   statusEl.textContent = "불러오는 중…";
   fieldsEl.innerHTML = "";
   currentData = null;
@@ -510,8 +518,15 @@ async function run() {
       target: { tabId: tab.id },
       func: extractYes24BookInfo,
     });
-    statusEl.textContent = "추출 완료. 원하는 양식 버튼을 눌러 복사하세요.";
     render(result);
+
+    if (result.weight) {
+      // YES24 페이지에서 무게까지 한 번에 다 찾은 경우: 보완 없이 바로 완료
+      statusEl.classList.add("extract-ok");
+      statusEl.textContent = "✅ 추출 완료. 원하는 양식 버튼을 눌러 복사하세요.";
+    } else {
+      statusEl.textContent = "추출 완료. 원하는 양식 버튼을 눌러 복사하세요.";
+    }
 
     // 무게가 없으면 다른 서점에서 보완 (ISBN 필요): 교보문고 → 알라딘 순
     if (!result.weight && result.isbn) {
@@ -559,17 +574,17 @@ async function run() {
 // ---- 이벤트 ----
 document.getElementById("case1Btn").addEventListener("click", () => {
   if (!currentData) return;
-  const cad = computeCanadaPrice(currentData.priceKRW, currentData.weight, getDiscountRate());
+  const cad = computeCanadaPrice(currentData.priceKRW, currentData.weight, getDiscountRate(), getMargin());
   copyText(buildCase1(currentData, cad));
 });
 document.getElementById("case2Btn").addEventListener("click", () => {
   if (!currentData) return;
-  const cad = computeCanadaPrice(currentData.priceKRW, currentData.weight, getDiscountRate());
+  const cad = computeCanadaPrice(currentData.priceKRW, currentData.weight, getDiscountRate(), getMargin());
   copyText(buildCase2(currentData, cad));
 });
 document.getElementById("case3Btn").addEventListener("click", () => {
   if (!currentData) return;
-  const cad = computeCanadaPrice(currentData.priceKRW, currentData.weight, getDiscountRate());
+  const cad = computeCanadaPrice(currentData.priceKRW, currentData.weight, getDiscountRate(), getMargin());
   copyText(buildCase3(currentData, cad));
 });
 document.getElementById("reloadBtn").addEventListener("click", run);
@@ -579,8 +594,14 @@ rateInput.addEventListener("input", () => {
   updateCanadaPriceDisplay();
 });
 
-// ---- 초기화: 저장된 할인율 불러오기 후 추출 시작 ----
-chrome.storage.local.get(["discountRate"], (res) => {
+marginInput.addEventListener("input", () => {
+  chrome.storage.local.set({ margin: marginInput.value });
+  updateCanadaPriceDisplay();
+});
+
+// ---- 초기화: 저장된 할인율/마진값 불러오기 후 추출 시작 ----
+chrome.storage.local.get(["discountRate", "margin"], (res) => {
   if (res && res.discountRate) rateInput.value = res.discountRate;
+  if (res && res.margin) marginInput.value = res.margin;
   run();
 });

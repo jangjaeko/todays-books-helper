@@ -55,6 +55,15 @@
     animation: spin 0.7s linear infinite;
     vertical-align: -1px;
   }
+  /* YES24에서 무게까지 한 번에 추출 성공(보완 불필요): 초록 강조 */
+  #status.extract-ok {
+    color: #157347;
+    font-weight: 700;
+    background: #e9f9ef;
+    border: 1px solid #b7e9c8;
+    border-radius: 6px;
+    padding: 7px 9px;
+  }
   /* 무게 보완 성공 시(교보문고/알라딘): 눈에 확 띄게 */
   #status.weight-ok {
     color: #b23a00;
@@ -229,6 +238,11 @@
     <label for="discountRate">할인율</label>
     <input type="number" id="discountRate" step="0.001" value="0.775" />
     <span class="canada-price" id="canadaPriceDisplay">CAD -</span>
+  </div>
+
+  <div class="rate-row">
+    <label for="marginInput">마진값</label>
+    <input type="number" id="marginInput" step="1" value="53" />
   </div>
 
   <div class="section-title">양식 선택 후 복사 (엑셀 붙여넣기용)</div>
