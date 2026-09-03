@@ -93,6 +93,17 @@ function extractYes24BookInfo() {
   let weight = "";
   let priceKRW = "";
 
+  // 무게(g) 파싱. 1000g 이상은 YES24가 "1,680g" 처럼 천 단위 쉼표를 넣는다.
+  // 쉼표를 허용하지 않으면 앞자리가 잘려 1,680g → 680g, 1,030g → 30g 이 되어
+  // 선박비 계산과 캐나다 가격이 크게 어긋난다.
+  const parseGrams = (text) => {
+    const m = String(text || "").match(/(\d[\d,]*(?:\.\d+)?)\s*g\b/);
+    if (!m) return "";
+    const n = parseFloat(m[1].replace(/,/g, ""));
+    // 책 무게로 말이 되는 범위만 채택 (그 밖이면 잘못 읽은 것)
+    return Number.isFinite(n) && n > 0 && n <= 30000 ? String(Math.round(n)) : "";
+  };
+
   document.querySelectorAll("table tr").forEach((row) => {
     const th = row.querySelector("th");
     const td = row.querySelector("td");
@@ -105,8 +116,7 @@ function extractYes24BookInfo() {
       isbn = m ? m[0] : value;
     }
     if (!weight && (label.includes("무게") || label.includes("쪽수"))) {
-      const m = value.match(/(\d+(?:\.\d+)?)\s*g\b/);
-      if (m) weight = String(Math.round(parseFloat(m[1])));
+      weight = parseGrams(value);
     }
     if (!pubDateRaw && (label === "발행일" || label.includes("발행일") || label.includes("출간일"))) {
       const m = value.match(/(\d{4})년\s?(\d{1,2})월/);
@@ -120,8 +130,8 @@ function extractYes24BookInfo() {
 
   // ---- fallback: 표에서 못 찾았을 때 본문 텍스트 정규식으로 보조 탐색 ----
   if (!weight) {
-    const m = document.body.innerText.match(/(\d+(?:\.\d+)?)\s*g(?=\s*\|)/);
-    if (m) weight = String(Math.round(parseFloat(m[1])));
+    const m = document.body.innerText.match(/(\d[\d,]*(?:\.\d+)?)\s*g(?=\s*\|)/);
+    if (m) weight = parseGrams(m[0]);
   }
   if (!pubDateRaw) {
     const m = document.body.innerText.match(/(\d{4})년\s?(\d{1,2})월/);
@@ -327,14 +337,20 @@ async function fetchKyoboWeight(isbn) {
 //   2) 상세페이지 HTML에서 무게(예: "145*210mm / 478g")를 파싱.
 // 안전장치: 상세페이지 HTML에 조회한 ISBN 문자열이 들어있을 때만 채택.
 // ================================================================
+// 알라딘도 1000g 이상은 "1,680g" 처럼 쉼표를 넣으므로 쉼표를 허용해야 한다.
+// (\d{2,5} 만 쓰면 1,680g 에서 680 만 잡혀 무게가 1kg 씩 줄어든다.)
 function parseAladinWeight(html) {
   const text = html.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ");
+  const toGrams = (s) => {
+    const n = parseFloat(String(s).replace(/,/g, ""));
+    return Number.isFinite(n) && n > 0 && n <= 30000 ? n : 0;
+  };
   // "…mm / 478g" 형태 우선 (치수 다음에 오는 무게)
-  let m = text.match(/mm\s*[^\d]{0,4}(\d{2,5})\s*g\b/i);
-  if (m) return parseFloat(m[1]);
+  let m = text.match(/mm\s*[^\d]{0,4}(\d[\d,]{1,6}(?:\.\d+)?)\s*g\b/i);
+  if (m) return toGrams(m[1]);
   // 폴백: "…쪽 … 478g"
-  m = text.match(/쪽[\s\S]{0,30}?(\d{2,5})\s*g\b/);
-  if (m) return parseFloat(m[1]);
+  m = text.match(/쪽[\s\S]{0,30}?(\d[\d,]{1,6}(?:\.\d+)?)\s*g\b/);
+  if (m) return toGrams(m[1]);
   return 0;
 }
 
