@@ -138,7 +138,25 @@ function extractYes24BookInfo() {
     if (m) pubDateRaw = m[1] + m[2].padStart(2, "0");
   }
 
-  // ---- 4) Subject: "관련분류" 아래 카테고리 분류 중 첫 번째 경로만 ----
+  // ---- 4) 회원리뷰 건수 ----
+  // 별점과 판매지수 사이에 있는 링크:
+  //   <a href="javascript:…goGD_bot(1);">회원리뷰(<em>16</em>건)</a>
+  // 링크 안이 텍스트 노드로 쪼개져 있어 innerText 를 통째로 보고 정규식으로 뽑는다.
+  // 1000건이 넘으면 "1,234건" 처럼 쉼표가 들어가므로 쉼표를 허용한다.
+  let reviewCount = "";
+  const REVIEW_RE = /회원리뷰\s*\(\s*([\d,]+)\s*건\s*\)/;
+  const reviewLink = Array.from(document.querySelectorAll("a")).find((a) =>
+    REVIEW_RE.test(a.textContent || "")
+  );
+  const reviewText = reviewLink ? reviewLink.textContent : document.body.innerText;
+  const rm = reviewText.match(REVIEW_RE);
+  if (rm) {
+    const n = parseInt(rm[1].replace(/,/g, ""), 10);
+    // 리뷰가 없으면 0건으로 표기되므로 0도 정상값으로 받는다.
+    if (Number.isFinite(n) && n >= 0) reviewCount = String(n);
+  }
+
+  // ---- 5) Subject: "관련분류" 아래 카테고리 분류 중 첫 번째 경로만 ----
   let subject = "";
   const headingCandidates = Array.from(document.querySelectorAll("*")).filter(
     (el) => el.children.length === 0 && clean(el.textContent) === "관련분류"
@@ -179,6 +197,7 @@ function extractYes24BookInfo() {
     publisher: publisher.trim(),
     pubDate: pubDateRaw, // YYYYMM
     weight, // 숫자만 (그램)
+    reviewCount, // 숫자만 (회원리뷰 건수)
     priceKRW, // 숫자만 (정가)
     subject,
     url: location.href,
@@ -195,6 +214,7 @@ const FIELD_DEFS = [
   { key: "publisher", label: "출판사" },
   { key: "pubDate", label: "출판일자 (YYYYMM)" },
   { key: "weight", label: "무게 (g, 숫자만)" },
+  { key: "reviewCount", label: "회원리뷰 (건수)" },
   { key: "priceKRW", label: "정가 (KRW)" },
   { key: "subject", label: "Subject (카테고리)" },
 ];
@@ -484,7 +504,7 @@ function buildCase1(d, cad) {
 }
 
 function buildCase2(d, cad) {
-  // ISBN | 제목 | 캐나다가격 | 빈칸 | 빈칸 | Copies(1) | 빈칸 | Author | 날짜 | 빈칸 | 출판사 | 장르(Subject) | Copies(1) | KRW | Weight
+  // ISBN | 제목 | 캐나다가격 | 빈칸 | 빈칸 | Copies(1) | 빈칸 | Author | 날짜 | 빈칸 | 출판사 | 장르(Subject) | Copies(1) | KRW | Weight | 회원리뷰
   return [
     d.isbn,
     d.title,
@@ -501,6 +521,7 @@ function buildCase2(d, cad) {
     COPIES,
     d.priceKRW,
     d.weight,
+    d.reviewCount, // 무게 다음 칸
   ].join("\t");
 }
 

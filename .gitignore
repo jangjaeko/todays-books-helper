@@ -13,3 +13,4 @@ npm-debug.log*
 # Build/배포 산출물
 *.zip
 dist/
+.gstack/
