@@ -1,37 +1,156 @@
-# YES24 도서정보 추출기
+# Today's Books Helper — YES24 Book Data Extractor
 
-YES24 도서 상세페이지에서 서지정보를 추출해, 엑셀에 바로 붙여넣을 수 있는 형태로 복사해주는 개인용 Chrome 확장 프로그램입니다.
+A Chrome extension that pulls bibliographic data off a YES24 book page, works out the
+Canadian retail price, and copies everything to the clipboard as tab-separated text you
+can paste straight into a spreadsheet.
 
-> 개인용 / 비상업적 목적으로 만들어졌습니다.
+> Built for internal use at a single Korean bookstore. Not on the Chrome Web Store, not
+> for resale.
 
-## 기능
+## Why this exists
 
-- YES24 상품 페이지에서 ISBN, 제목, 저자, 출판사, 출판일자(YYYYMM), 무게, 정가, 카테고리 추출
-- 원화 정가와 무게를 기반으로 캐나다 판매가 자동 계산 (할인율 조정 가능)
-- 3가지 엑셀 양식(SALES / 선박 / LBI)에 맞춰 탭 구분 텍스트로 클립보드 복사
+The shop imports Korean books into Canada and resells them, including to public library
+systems. Every title has to be entered into several spreadsheets — a shipping manifest, a
+sales list, and library order forms — and each one wants the same facts in a different
+column order.
 
-## 설치
+Doing that by hand means visiting the YES24 page, copying eight or nine fields one at a
+time, looking up the shipping weight, and doing arithmetic to convert the Korean cover
+price into a Canadian one. Per book that is a few minutes. For an order of two hundred
+titles it is a day of work, and a single mistyped weight quietly throws the price off by
+tens of dollars.
 
-1. 이 저장소를 클론하거나 ZIP으로 내려받아 압축을 풉니다.
-2. Chrome 주소창에 `chrome://extensions` 입력
-3. 우측 상단 **개발자 모드** 켜기
-4. **압축해제된 확장 프로그램을 로드합니다** 클릭 → 이 폴더 선택
-5. YES24 도서 상세페이지(`yes24.com/product/goods/...`)에서 확장 아이콘 클릭
+This extension collapses that into: open the page, click the icon, click a format button,
+paste. It also fills in the weight from other bookstores when YES24 does not publish it,
+which is the field most often missing and the one that matters most for the price.
 
-## 사용법
+## What it pulls
 
-1. YES24 도서 상세페이지에서 확장 아이콘을 클릭하면 자동으로 정보가 추출됩니다.
-2. 필요하면 상단에서 **할인율**을 조정합니다 (기본 0.775, 자동 저장됨).
-3. 원하는 양식 버튼(Case 1 / 2 / 3)을 눌러 복사한 뒤 엑셀에 붙여넣습니다.
+| Field | Notes |
+|---|---|
+| ISBN | ISBN-13 from the product detail table |
+| Title | Cover title, publisher subtitles stripped |
+| Author | **Exactly as YES24 prints it**, role suffixes and all (`글`, `그림`, `역`, `저`) |
+| Publisher | From the byline under the title |
+| Publication date | Normalised to `YYYYMM` (e.g. `202607`) |
+| Weight | Grams, number only. Falls back to Kyobo Book Centre, then Aladin |
+| Member reviews | Review count, number only |
+| List price | Korean cover price (정가), not the discounted sale price |
+| Subject | First category path only, joined with `>` |
 
-개별 필드만 필요하면 "추출된 원본 값 보기"를 펼쳐 항목별로 복사할 수 있습니다.
+Every field is also copyable on its own from the "raw values" panel, which is useful when
+you only need to patch one cell.
 
-## 개발
+### About the weight fallback
 
-빌드 과정이 없는 순수 정적 파일입니다. 파일을 수정한 뒤 `chrome://extensions`에서 새로고침(⟳) 버튼을 누르면 바로 반영됩니다.
+Weight decides the shipping cost, and shipping cost is a large share of the final price,
+but YES24 leaves it blank on a fair number of titles. When it is missing and an ISBN is
+available the extension queries Kyobo Book Centre, then Aladin, and shows which source it
+came from. If neither has it you can type the weight in by hand and the price recalculates
+live.
 
-프로젝트 구조, 추출 규칙, 가격 계산 공식, 엑셀 양식 정의 등 상세한 내용은 [CLAUDE.md](./CLAUDE.md)를 참고하세요.
+Both lookups verify that the ISBN on the page they found matches the one being looked up.
+Kyobo in particular shows bestsellers when a search returns nothing, so without that check
+you would silently inherit some unrelated book's weight.
 
-## 라이선스
+## Price calculation
+
+```
+x     = (list price KRW × discount rate ÷ 960) + (weight g × 0.001 × 13)
+raw   = x + x × margin ÷ (100 − margin)
+price = round up to the nearest 0.50
+```
+
+- **Discount rate** — default `0.775`, editable, saved between sessions.
+- **Margin** — default `53`, editable, saved between sessions.
+- `÷ 960` is the KRW→CAD rate; `× 0.013` is the per-gram shipping cost.
+- If either weight or list price is missing the price shows as `0` rather than guessing.
+
+Worked examples:
+
+| Book | KRW | Weight | raw | Price |
+|---|---|---|---|---|
+| 사라지는 돈… | 21,000 | 502 g | 49.956 | **50.00** |
+| 흔한남매 15 | 16,800 | 450 g | 41.303 | **41.50** |
+
+## Output formats
+
+All three copy as tab-separated text, so each value lands in its own spreadsheet cell.
+Blank columns are intentional — they line up with the existing sheets.
+
+**Case 1 · SALES** (8 columns)
+```
+CAD price │ (blank) │ Title │ Publisher │ Author │ Copies │ KRW │ Weight
+```
+
+**Case 2 · Shipping** (16 columns)
+```
+ISBN │ Title │ CAD price │ (blank) │ (blank) │ Copies │ (blank) │ Author │
+Pub.Date │ (blank) │ Publisher │ Subject │ Copies │ KRW │ Weight │ Reviews
+```
+
+**Case 3 · LBI** (12 columns, **two rows per book**)
+
+| # | Row 1 | Row 2 |
+|---|---|---|
+| 1 | ISBN | — |
+| 2 | — | Title |
+| 3 | CAD price | — |
+| 6 | Copies | — |
+| 8 | — | Author |
+| 9 | Pub.Date | — |
+| 11 | — | Publisher |
+| 12 | Subject | — |
+
+`Copies` defaults to `1`; adjust it in the spreadsheet if an order needs more.
+
+## Install
+
+No build step — these are plain static files.
+
+1. Clone this repository, or download the ZIP and unpack it.
+2. Open `chrome://extensions` in Chrome.
+3. Turn on **Developer mode** (top right).
+4. Click **Load unpacked** and pick this folder.
+5. Open any YES24 product page (`yes24.com/product/goods/...`) and click the extension icon.
+
+## Usage
+
+1. On a YES24 book page, click the icon. Extraction runs immediately.
+2. Check the status line:
+   - **green** — everything found on YES24, including weight
+   - **orange** — weight was filled in from Kyobo or Aladin (the source is labelled)
+   - **red** — no weight anywhere; type it in yourself
+3. Adjust discount rate or margin if this order needs different numbers.
+4. Click a format button to copy, then paste into the spreadsheet.
+
+## Where the data goes next
+
+The shipping format feeds the [bookstore-inventory](https://github.com/jangjaeko/bookstore-inventory)
+web app, which tracks stock across machines. Paste a batch of rows there and it matches
+books by ISBN, adds up quantities, and later subtracts them when library invoices come
+back.
+
+**The two projects share column layouts.** If you reorder a format here, the matching
+preset in that app has to change too, or values will silently land in the wrong fields.
+
+## Development
+
+Edit a file, then press the refresh (⟳) button on the extension card in
+`chrome://extensions`. That is the whole loop.
+
+Two things worth knowing before changing extraction:
+
+- `extractYes24BookInfo()` is injected into the YES24 page by
+  `chrome.scripting.executeScript`. It **cannot reference anything outside itself** —
+  every helper it needs has to be defined inside the function body.
+- YES24 markup differs between product types (domestic, foreign, used, eBook). Prefer
+  matching on label text (`발행일`, `ISBN13`, `정가`) or link URL patterns over class
+  names, and always keep a fallback.
+
+See [CLAUDE.md](./CLAUDE.md) for the full extraction rules, the DOM quirks behind each
+selector, and past bugs worth not repeating.
+
+## License
 
 MIT
